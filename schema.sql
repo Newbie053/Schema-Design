@@ -1,127 +1,103 @@
--- schema.sql
--- Drop (safe reset)
-DROP TABLE IF EXISTS events CASCADE;
-DROP TABLE IF EXISTS vehicles CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
+-- 🚗 Parking Marshal Database Setup Script
+-- Date: 2025-10-28
+-- Purpose: Core schemas (users, vehicles, events) + seed data
 
--- USERS
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'user',
-    is_delete BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- =====================================================
+-- 1️⃣ Create Database
+-- =====================================================
+CREATE DATABASE parking_marshal;
+
+-- Connect to the new database manually after running this line:
+-- \c parking_marshal;
+
+-- =====================================================
+-- 2️⃣ Encoding Setup (ensure Bangla text compatibility)
+-- =====================================================
+SET client_encoding TO 'UTF8';
+
+-- =====================================================
+-- 3️⃣ Schema: users
+-- =====================================================
+CREATE SCHEMA IF NOT EXISTS users;
+
+CREATE TABLE IF NOT EXISTS users.admins (
+    username VARCHAR(50) PRIMARY KEY,
+    gmail VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- VEHICLES
-CREATE TABLE vehicles (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    plate_number VARCHAR(100) NOT NULL UNIQUE,
-    vehicle_type VARCHAR(50) NOT NULL,
-    is_delete BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- 👥 Example Admin Data
+INSERT INTO users.admins (username, gmail, password)
+VALUES 
+('dipto_admin', 'dipto@example.com', 'hashed_password_1'),
+('rayhan_admin', 'rayhan@example.com', 'hashed_password_2');
+
+-- =====================================================
+-- 4️⃣ Schema: vehicles
+-- =====================================================
+CREATE SCHEMA IF NOT EXISTS vehicles;
+
+CREATE TABLE IF NOT EXISTS vehicles.vehicle (
+    vehicle_id SERIAL PRIMARY KEY,
+    plate_no VARCHAR(50) UNIQUE NOT NULL,  -- UTF-8 safe for Bangla
+    is_in_garage BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- EVENTS
-CREATE TABLE events (
-    id SERIAL PRIMARY KEY,
-    vehicle_id INT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
-    event_type VARCHAR(10) NOT NULL CHECK (event_type IN ('entry','exit')),
-    event_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-    paid BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- 🚘 Example Vehicle Data
+INSERT INTO vehicles.vehicle (plate_no, is_in_garage)
+VALUES 
+('ঢাকা-১২৩৪', FALSE),        -- exited
+('চট্টগ্রাম-৫৬৭৮', TRUE),     -- inside
+('খুলনা-৮৯০১', TRUE),        -- inside
+('রাজশাহী-৪৫৬৭', FALSE),     -- exited
+('সিলেট-৯৮৭৬', TRUE);        -- inside
+
+-- =====================================================
+-- 5️⃣ Schema: events
+-- =====================================================
+CREATE SCHEMA IF NOT EXISTS events;
+
+CREATE TABLE IF NOT EXISTS events.event (
+    event_id SERIAL PRIMARY KEY,
+    vehicle_id INT REFERENCES vehicles.vehicle(vehicle_id) ON DELETE CASCADE,
+    event_type VARCHAR(10) CHECK (event_type IN ('entry', 'exit')),
+    event_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_events_vehicle_ts ON events(vehicle_id, event_timestamp);
-CREATE INDEX IF NOT EXISTS idx_events_paid ON events(paid);
-
-
--- seed.sql
-
--- USERS (insert first)
-INSERT INTO users (name, email, password_hash, role)
+-- 📅 Example Event Data
+INSERT INTO events.event (vehicle_id, event_type, event_timestamp)
 VALUES
-('রফিকুল ইসলাম', 'rafiq@example.com', 'hash1', 'user'),
-('সুমনা আক্তার', 'sumona@example.com', 'hash2', 'user'),
-('জাহিদ হাসান', 'jahid@example.com', 'hash3', 'admin'),
-('আরিফ হোসেন', 'arif@example.com', 'hash4', 'user'),
-('মৌসুমি খাতুন', 'mausumi@example.com', 'hash5', 'user');
+(1, 'entry', '2025-10-27 09:15:00'),
+(1, 'exit', '2025-10-27 10:45:00'),
+(2, 'entry', '2025-10-27 11:00:00'),
+(3, 'entry', '2025-10-27 12:30:00'),
+(4, 'entry', '2025-10-27 13:15:00'),
+(4, 'exit', '2025-10-27 14:00:00'),
+(5, 'entry', '2025-10-27 15:10:00');
 
--- VEHICLES (insert next) IDs will be 1..10
-INSERT INTO vehicles (user_id, plate_number, vehicle_type)
-VALUES
-(1, 'ঢাকা ১২-৫৬৩৪', 'car'),
-(1, 'চট্টগ্রাম ৭৮-১২৯০', 'motorbike'),
-(2, 'সিলেট ৫৬-৯০৭৮', 'car'),
-(2, 'রাজশাহী ৯৯-১২৩৪', 'truck'),
-(3, 'বরিশাল ৪৫-৬৭৮৯', 'car'),
-(3, 'খুলনা ৩৪-৫৬৭৮', 'bus'),
-(4, 'ফরিদপুর ১২-৩৪৫৬', 'van'),
-(4, 'রংপুর ২৩-৮৯৭৬', 'car'),
-(5, 'কুমিল্লা ৮৮-৯৯১১', 'bike'),
-(5, 'নরসিংদী ১১-৫০০০', 'car');
+-- =====================================================
+-- 6️⃣ Validation Queries (Optional)
+-- =====================================================
+-- Show all admins
+SELECT * FROM users.admins;
 
--- EVENTS (insert last) — randomized, consistent entry/exit pairs and open sessions
-INSERT INTO events (vehicle_id, event_type, event_timestamp, paid) VALUES
-(3, 'entry', '2025-10-27 08:10:00+06', TRUE),
-(1, 'entry', '2025-10-27 08:15:00+06', FALSE),
-(6, 'entry', '2025-10-27 08:20:00+06', TRUE),
-(3, 'exit',  '2025-10-27 09:05:00+06', TRUE),
-(5, 'entry', '2025-10-27 09:10:00+06', FALSE),
-(2, 'entry', '2025-10-27 09:15:00+06', TRUE),
-(6, 'exit',  '2025-10-27 09:25:00+06', TRUE),
-(1, 'exit',  '2025-10-27 09:40:00+06', FALSE),
+-- Show all vehicles with current status
+SELECT vehicle_id, plate_no, is_in_garage FROM vehicles.vehicle;
 
-(7, 'entry', '2025-10-27 09:45:00+06', TRUE),
-(5, 'exit',  '2025-10-27 10:00:00+06', FALSE),
-(4, 'entry', '2025-10-27 10:05:00+06', FALSE),
-(8, 'entry', '2025-10-27 10:10:00+06', FALSE),
-(10, 'entry', '2025-10-27 10:20:00+06', TRUE),
-(7, 'exit',  '2025-10-27 10:25:00+06', TRUE),
+-- Show full event history with plate numbers
+SELECT e.event_id, v.plate_no, e.event_type, e.event_timestamp
+FROM events.event e
+JOIN vehicles.vehicle v ON e.vehicle_id = v.vehicle_id
+ORDER BY e.event_timestamp;
 
-(9, 'entry', '2025-10-26 23:40:00+06', FALSE),
-(9, 'exit',  '2025-10-27 07:20:00+06', FALSE),
-
-(3, 'entry', '2025-10-27 10:30:00+06', TRUE),
-(2, 'exit',  '2025-10-27 10:35:00+06', TRUE),
-(3, 'exit',  '2025-10-27 12:00:00+06', TRUE),
-
-(6, 'entry', '2025-10-27 11:15:00+06', FALSE),
-(6, 'exit',  '2025-10-27 13:30:00+06', FALSE),
-(5, 'entry', '2025-10-27 11:45:00+06', FALSE),
-
-(10, 'exit',  '2025-10-27 12:05:00+06', TRUE),
-(4, 'exit',  '2025-10-27 12:20:00+06', FALSE),
-(8, 'exit',  '2025-10-27 12:30:00+06', FALSE),
-
-(1, 'entry', '2025-10-27 12:40:00+06', TRUE),
-(1, 'exit',  '2025-10-27 13:50:00+06', TRUE),
-(7, 'entry', '2025-10-27 14:05:00+06', FALSE),
-
-(3, 'entry', '2025-10-27 14:15:00+06', FALSE),
-(3, 'exit',  '2025-10-27 15:25:00+06', FALSE),
-
-(2, 'entry', '2025-10-27 15:35:00+06', FALSE),
-(9, 'entry', '2025-10-27 15:50:00+06', FALSE),
-
-(10, 'entry', '2025-10-27 16:00:00+06', FALSE),
-(10, 'exit',  '2025-10-27 16:40:00+06', FALSE),
-
-(8, 'entry', '2025-10-27 17:00:00+06', FALSE),
-(5, 'exit',  '2025-10-27 17:20:00+06', FALSE),
-
-(4, 'entry', '2025-10-27 17:30:00+06', TRUE),
-(4, 'exit',  '2025-10-27 19:00:00+06', TRUE),
-
-(6, 'entry', '2025-10-27 19:15:00+06', FALSE),
-(6, 'exit',  '2025-10-27 20:30:00+06', FALSE),
-
-(9, 'exit',  '2025-10-27 21:00:00+06', FALSE),
-(8, 'exit',  '2025-10-27 21:10:00+06', FALSE);
+-- =====================================================
+-- ✅ Notes:
+-- - UTF-8 encoding ensures Bangla plate numbers are stored properly.
+-- - "is_in_garage" currently managed manually.
+-- - In production, we’ll automate flag updates via triggers or backend logic:
+--     🔹 On 'entry' insert → set vehicle.is_in_garage = TRUE
+--     🔹 On 'exit' insert  → set vehicle.is_in_garage = FALSE
+--     🔹 Enforce rule: no 'exit' allowed unless last event was 'entry'
+-- =====================================================
